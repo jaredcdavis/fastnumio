@@ -88,9 +88,7 @@
                 (<= #.(char-code #\a) code)
                 (the fixnum (- code #.(- (char-code #\a) 10))))))))
 
-;; (declaim (optimize (safety 3) (speed 0) (space 0)))
-
-(defun assemble-nibbles (pos nibarr)
+(defun assemble-nibbles-60 (pos nibarr)
   (declare (type (array (unsigned-byte 4) *) nibarr)
            (type fixnum pos))
   (let ((finalans 0)  ;; Accumulator for the answer (perhaps a bignum)
@@ -134,6 +132,65 @@
       ;(format t "ANS: ~x~%" ans)
       ans)))
 
+#+(and Clozure x86-64)
+(progn
+  ;; Make sure we still properly understand the fixnum/bignum boundary.
+  (assert (typep (1- (expt 2 60)) 'fixnum))
+  (assert (not (typep (expt 2 60) 'fixnum))))
+
+
+;; #+(and Clozure x86-64)
+;; (defun assemble-nibbles-ccl64 (pos nibarr)
+;;   (declare (type (array (unsigned-byte 4) *) nibarr)
+;;            (type fixnum pos))
+;;   (if (<= pos 15)
+;;       ;; Not going to need a bignum anyway, so no need for anything fancy.
+;;       (progn
+;;         (format t "Falling back to assemble-nibbles-60 because there are only ~d chars.~%" pos)
+;;         (assemble-nibbles-60 pos nibarr))
+
+;;     (let ((finalans
+;;            ;; Create a bignum of the appropriate length.  We'll smash its
+;;            ;; bits in a moment.  We need room for 4*pos nibbles.
+;;            (ccl::%allocate-bignum the unsigned-byte (ash 1 (1- (the fixnum (ash pos 2))))))
+;;           (chunkidx 0)  ;; Offset into finalans for this chunk (0, 1, ...)
+;;           (chunk    0)  ;; Value of the current chunk we're assembling
+;;           (chunkpos 0)  ;; Nibble offset into the current chunk (0, 4, ...)
+;;           )
+;;       (declare (type (unsigned-byte 32) chunk)
+;;                (type (unsigned-byte 8) chunkpos)
+;;                (type fixnum chunkidx)
+;;                (type unsigned-byte finalans))
+;;       (format t "Shift thing is ~x~%" finalans)
+;;       (format t "VECSIZE is ~d~%" (ccl::uvsize finalans))
+;;       (loop do
+;;             (format t "FINAL ~x, CHUNK ~x, CP ~d, CIDX ~d, POS ~d~%"
+;;                     finalans chunk chunkpos chunkidx pos)
+;;             (when (eql pos 0)
+;;               (loop-finish))
+;;             (when (eql chunkpos 32)
+;;               ;; Merge the chunk we've gotten into the final answer.
+;;               (setf (ccl::uvref finalans chunkidx) chunk)
+;;               ;; Start a new chunk.
+;;               (incf chunkidx 1)
+;;               (setq chunk 0)
+;;               (setq chunkpos 0))
+;;             (decf pos)
+;;             (format t "This nibble: ~x~%" (aref nibarr pos))
+;;             (setq chunk ;; chunk |= nibarr[pos] << chunkpos
+;;                   (the (unsigned-byte 32)
+;;                        (logior (the (unsigned-byte 32) chunk)
+;;                                (the (unsigned-byte 32)
+;;                                     (ash (the (unsigned-byte 4) (aref nibarr pos))
+;;                                          (the (unsigned-byte 8) chunkpos))))))
+;;             (incf chunkpos 4))
+
+;;     (format t "Final assembly.  FINAL ~x, CHUNK ~x, CIDX ~d~%" finalans chunk chunkidx)
+;;     (setf (ccl::uvref finalans chunkidx) chunk)
+;;     (format t "After final installation: ~x~%" finalans)
+;;     finalans)))
+
+
 (defun read-hex-v1 (stream)
   (let* ((pos    0)
          (char)
@@ -143,12 +200,19 @@
     (declare (dynamic-extent nibarr)
              (type fixnum pos)
              (type (array (unsigned-byte 4) *) nibarr))
-    ;; Read as many hex digits as are available into the nibble array.  We
-    ;; don't know how many digits we will need, so grow the array if necessary.
+    ;; Begin by skipping any leading 0 digits.  (They screw up length-based
+    ;; computations.)
     (loop do
           (setq char   (read-char stream nil))
           (setq nibble (and char (hex-digit-val char)))
-          ;(format t "reading: char ~s, nibble ~s, pos ~s~%" char nibble pos)
+          (unless nibble
+            (loop-finish))
+          (unless (eql nibble 0)
+            (loop-finish)))
+
+    ;; Read as many hex digits as are available into the nibble array.  We
+    ;; don't know how many digits we will need, so grow the array if necessary.
+    (loop do
           (unless nibble
             (loop-finish))
           (when (eql pos (length nibarr))
@@ -162,7 +226,10 @@
             ;(format t "Growing array to ~s~%" nibarrlen)
             (setq nibarr (adjust-array nibarr nibarrlen)))
           (setf (aref nibarr pos) nibble)
-          (incf pos))
+          ;; advance to next character
+          (incf pos)
+          (setq char   (read-char stream nil))
+          (setq nibble (and char (hex-digit-val char))))
 
     ;; Unread the last (non-hex) character.  Special case: char is NIL exactly
     ;; when we're at EOF, in which case we don't need to unread anything.
@@ -175,10 +242,12 @@
     ;; Found hex digits and already decoded their nibbles into nibarr.  The
     ;; nibble in nibarr[0] is the most significant.  I now want to chunk them
     ;; up into fixnum-sized blobs.
-    (assemble-nibbles pos nibarr)))
+    ;;    #-(and Clozure x86-64)
+    (assemble-nibbles-60 pos nibarr)
+    ;; #+(and Clozure x86-64)
+    ;; (assemble-nibbles-ccl64 pos nibarr)))
+    ))
 
-(let ((stream (make-string-input-stream "deadbeeffeedf00d is delicious")))
-  (time (read-hex-v1 stream)))
 
 (let ((tests (append
               (list #xbeef
@@ -196,6 +265,9 @@
                     (- (expt 2 60) 3)
                     (- (expt 2 60) 2)
                     (- (expt 2 60) 1)
+
+                    #x5544FEDCBA9876543210
+
                     (expt 2 60)
                     (+ (expt 2 60) 1)
                     (+ (expt 2 60) 2)
@@ -216,9 +288,27 @@
                       (format stream "~x" test)
                       (get-output-stream-string stream)))
                (v1 (let ((stream (make-string-input-stream str)))
+                     (progn (format t "Testing ~s~%" str)
+                            (read-hex-v1 stream)))))
+          (or (equal test v1)
+              (error "V1 Failure: ~x --> str ~s, v1 ~x" test str v1)))
+        ;; Test leading zero
+        (let* ((str (let ((stream (make-string-output-stream)))
+                      (format stream "0~x" test)
+                      (get-output-stream-string stream)))
+               (v1 (let ((stream (make-string-input-stream str)))
+                     (read-hex-v1 stream))))
+          (or (equal test v1)
+              (error "V1 Failure: ~x --> str ~s, v1 ~x" test str v1)))
+        ;; Two leading zeroes
+        (let* ((str (let ((stream (make-string-output-stream)))
+                      (format stream "00~x" test)
+                      (get-output-stream-string stream)))
+               (v1 (let ((stream (make-string-input-stream str)))
                      (read-hex-v1 stream))))
           (or (equal test v1)
               (error "V1 Failure: ~x --> str ~s, v1 ~x" test str v1))))
+
   :ok)
 
 

@@ -55,9 +55,6 @@
 (defun gc ()
   (tg::gc :full t :verbose nil))
 
-#+Clozure
-(ccl::gc-verbose nil)
-
 (defmacro my-time (form)
   `(let ((start (get-internal-real-time))
          (blah  (time ,form))
