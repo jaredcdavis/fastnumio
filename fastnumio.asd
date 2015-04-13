@@ -37,6 +37,7 @@
                ;; :cl-fad
                )
   :components ((:file "packages")
-               (:file "write-hex"))
+               (:file "write-hex")
+               (:file "read-hex"))
   :serial t)
 

@@ -14,9 +14,9 @@ These routines are optimized for 64-bit CCL on X86-64.  They may not be
 especially optimal on other Lisps.  Patches are (of course) welcome.
 
 
-### API
+## API
 
-## `(write-hex val output-stream) --> stream`
+### `(write-hex val output-stream) --> stream`
 
   - `val` must be a non-negative integer.
   - `output-stream` must be an output stream.
@@ -28,16 +28,18 @@ On 64-bit CCL, `write-hex` is perhaps 4-7x faster than `(format stream "~x"
 val)` and, unlike `format`, allocate no memory.
 
 On 64-bit SBCL, `write-hex` is perhaps 2-4x faster than `format`.  It may use
-more memory than `format` on large bignums (e.g., beyond `2^128`).
+more memory than `format` on large bignums (e.g., beyond 2^128).
 
 
 
 
 ### Authorship, License
 
-Copyright (C) 2015 Centaur Technology
+Copyright (C) 2015 [Centaur Technology](http://www.centtech.com)
 
-MIT-style [LICENSE](LICENSE).
+Original author: [Jared Davis](mailto:jared.c.davis@gmail.com)
+
+MIT/X11-style [LICENSE](LICENSE).
 
 
 
