@@ -82,14 +82,14 @@
            (unread-char char stream)
            stream))))
 
-(defun test-v1 (ntimes plain-filename)
+(defun test-safe (ntimes plain-filename)
   (loop for i fixnum from 1 to ntimes
         do
         (with-open-file (stream plain-filename :direction :input)
           (let ((elem nil))
             (loop do
                   (eat-whitespace stream)
-                  (let ((tmp (read-hex-v1 stream)))
+                  (let ((tmp (read-hex stream)))
                     (if tmp
                         (setq elem tmp)
                       (loop-finish))))
@@ -115,11 +115,28 @@
               (plain-file (third test))
               (ntimes     5))
           (format t "~% --- Testing reads of random numbers under 2^~d ---~%" n)
-          (let* ((builtin-time (progn (gc) (my-time (test-builtin ntimes sharp-file))))
-                 (v1-time      (progn (gc) (my-time (test-v1 ntimes plain-file)))))
-            (list n builtin-time v1-time)))))
+          (let* ((builtin-time   (progn (gc) (my-time (test-builtin ntimes sharp-file))))
+                 (safe-time      (progn (gc) (my-time (test-safe ntimes plain-file)))))
+            (list n builtin-time safe-time)))))
 
-(pprint *times*)
+
+(progn
+  (format t "~%")
+  (format t "         N        READ       SAFE/Speedup~%")
+  (format t "------------------------------------------------~%")
+  (loop for elem in *times* do
+        (let* ((n        (first elem))
+               (fmt      (second elem))
+               (safe     (third elem))
+               ;;(unsafe   (fourth elem))
+               (sspeedup (if (< fmt safe)   (- (/ safe fmt))   (/ fmt safe))))
+               ;;(uspeedup (if (< fmt unsafe) (- (/ unsafe fmt)) (/ fmt unsafe))))
+          (format t "~10D  ~10,2Fs ~10,2Fs/~3,2Fx~%"
+                  n fmt safe sspeedup
+                  ;;unsafe uspeedup
+                  )))
+  (format t "------------------------------------------------~%")
+  (format t "~%"))
 
 (progn
   (format t "Deleting test files.~%")

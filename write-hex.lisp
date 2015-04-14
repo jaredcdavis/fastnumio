@@ -33,64 +33,9 @@
 
 ; ----------------------------------------------------------------------------
 ;
-;                           Fast Hex Printing
+;                          Supporting Utilities
 ;
 ; ----------------------------------------------------------------------------
-
-; (write-hex val stream) is like (format stream "~x" val) but, on CCL at least,
-; it is about 4-7x faster and uses no memory.
-;
-; Our heaviest optimizations are CCL-specific, but other Lisps may be able to
-; reuse some of this code, perhaps to good effect.  For instance, I think SBCL
-; also uses 61-bit fixnums, so our function *may* work well on it.  If we want
-; to port XVAL to other Lisps, we should do some quick performance evaluations
-; to see what to use.  The commented-out performance testing code is at the
-; bottom of this file may be helpful.
-;
-; Notes for CCL.  Rudimentary testing suggests that printing out whole strings
-; with write-string is much faster than printing individual characters with
-; write-char.  Accordingly, my first thought was that I would split up the
-; value to be printed into 60-bit (fixnum) blocks, build strings that contain
-; the corresponding characters, and then print these strings out all at once.
-;
-; The result is write-hex-v1.  It worked kind of well.  It is very fast for
-; small numbers and was also better than the other methods for bignums.  But
-; even despite dynamic-extent declarations, it still uses an awful lot of
-; memory.
-;
-; It seems that to do better, we have to go under the hood.  Accordingly, I
-; wrote some horrible CCL-specific code that exploits the underlying bignum
-; representation.  This code, write-hex-v2, obviously isn't suitable for other
-; Lisps, but it is very, very fast.  Here is a performance comparison for
-; printing 10 million random numbers under some limit, where
-;
-;    CCL  == (format stream "~x" x)
-;    V1   == (write-hex-v1 x stream)
-;    V2   == (write-hex x stream)
-;
-;         Limit     CCL         V1         V2        Speedup
-;     --------------------------------------------------------
-;         2^32      4.2s        1.0s       1.0s        4.2x
-;
-;
-;         2^60      5.7s        1.4s       1.4s        4.1x
-;
-;
-;         2^64      10.2s       2.9s       2.2s        4.6x
-;                   400M        144M       64B
-;
-;         2^80      11.6s       3.3s       2.9s        4.0x
-;                   480M        160M       64B
-;
-;         2^128     19.9s       5.4s       4.1s        4.9x
-;                   960M        480M       64B
-;
-;         2^256     43.1s       10.4s      7.8s        5.5x
-;                   2.2G        1.2G       64B
-;
-;         2^512     113s        22.0s      15.7s       7.2x
-;                   6.1G        3.8G       64B
-;     --------------------------------------------------------
 
 (defmacro fast-u32-p (x)
   "Maybe faster version of (< x (expt 2 32)).
@@ -207,12 +152,23 @@
 (assert (equal (hex-digit-to-char #xF) #\F))
 
 
+; ----------------------------------------------------------------------------
+;
+;                           Fast Hex Printing
+;
+; ----------------------------------------------------------------------------
 
-; ----------------------------------------------------------------------------
+; Rudimentary testing suggests that printing out whole strings with
+; write-string is much faster than printing individual characters with
+; write-char on CCL.
 ;
-;          V1.  Supporting routines for writing 60-bit blocks.
+; The basic idea of write-hex is to split up the value to be printed into
+; 60-bit (fixnum) blocks, build strings that contain the corresponding
+; characters, and then print these strings out all at once.
 ;
-; ----------------------------------------------------------------------------
+; This works kind of well.  It is very fast for small numbers and was also
+; better than the other methods for bignums.  But even despite dynamic-extent
+; declarations, it still uses an awful lot of memory.
 
 (defun write-hex-u60-without-leading-zeroes (val stream)
   (declare (type (unsigned-byte 60) val))
@@ -291,7 +247,7 @@
     ;; we want to print and POS says how many we need.  So write them.
     (write-string arr stream)))
 
-(defun write-hex-v1 (val stream)
+(defun write-hex (val stream)
   (declare (type unsigned-byte val))
   (if (fast-u60-p val)
       (write-hex-u60-without-leading-zeroes val stream)
@@ -302,20 +258,27 @@
                ;; Disappointingly we still get memory allocation here.
                (dynamic-extent high)
                (dynamic-extent low))
-      (write-hex-v1 high stream)
+      (write-hex high stream)
       (write-hex-u60-with-leading-zeroes low stream)))
   stream)
 
 
 
 
+
 ; ----------------------------------------------------------------------------
 ;
-;          V2.  Supporting routines for writing 32-bit blocks.
+;                      Scary Unsafe Hex Printing
 ;
 ; ----------------------------------------------------------------------------
 
+; It seems that to do better, we have to go under the hood.  Accordingly, I
+; wrote some horrible CCL-specific code that exploits the underlying bignum
+; representation.  This code obviously isn't suitable for other Lisps, but it
+; is very, very fast.
+
 (defun write-hex-u32-without-leading-zeroes (val stream)
+  ;; Nothing CCL-specific, may be useful for Lisps with smaller fixnums?
   (declare (type (unsigned-byte 32) val))
   (if (eql val 0)
       (write-char #\0 stream)
@@ -362,6 +325,7 @@
   stream)
 
 (defun write-hex-u32-with-leading-zeroes (val stream)
+  ;; Nothing CCL-specific, may be useful for Lisps with smaller fixnums?
   (declare (type (unsigned-byte 32) val))
   (let ((pos    0)
         (shift -28)
@@ -387,7 +351,6 @@
     ;; we want to print and POS says how many we need.  So write them.
     (write-string arr stream)))
 
-
 #+(and Clozure x86-64)
 (progn
   ;; Make sure we still properly understand the fixnum/bignum boundary.
@@ -395,7 +358,7 @@
   (assert (not (typep (expt 2 60) 'fixnum))))
 
 #+(and Clozure x86-64)
-(defun write-hex-v2-bignum (val stream)
+(defun scary-unsafe-write-hex-bignum (val stream)
   ;; Assumption: val must be a bignum.
   ;; Assumption: val must be nonzero.
   ;;
@@ -427,22 +390,16 @@
 #-(and Clozure x86-64)
 (declaim (inline write-hex))
 
-(defun write-hex (val stream)
+(defun scary-unsafe-write-hex (val stream)
   (declare (type unsigned-byte val))
   #-(and Clozure x86-64)
-  (write-hex-v1 val stream)
+  (write-hex val stream)
   #+(and Clozure x86-64)
   ;; Any fixnums can be handled with the ordinary 60-bit printer.
   (if (fast-u60-p val)
       (write-hex-u60-without-leading-zeroes val stream)
-    (write-hex-v2-bignum val stream))
+    (scary-unsafe-write-hex-bignum val stream))
   stream)
-
-
-
-
-
-
 
 
 ; ----------------------------------------------------------------------------
@@ -487,10 +444,10 @@
                       (format stream "~x" test)
                       (get-output-stream-string stream)))
               (v1 (let ((stream (make-string-output-stream)))
-                    (write-hex-v1 test stream)
+                    (write-hex test stream)
                     (get-output-stream-string stream)))
               (v2 (let ((stream (make-string-output-stream)))
-                    (write-hex test stream)
+                    (scary-unsafe-write-hex test stream)
                     (get-output-stream-string stream))))
           (or (equal spec v1)
               (error "V1 Failure: ~x --> spec ~s !==  impl ~s" test spec v1))

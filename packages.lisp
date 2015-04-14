@@ -34,6 +34,8 @@
   (:use :cl)
   (:export
    #:write-hex
+   #:read-hex
+   #:scary-unsafe-write-hex
    ))
 
 

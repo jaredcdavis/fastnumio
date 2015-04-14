@@ -40,17 +40,17 @@
         (loop for num in nums do
               (format stream "~x" num))))
 
-(defun test-v1 (ntimes nums stream)
-  (declare (type fixnum ntimes))
-  (loop for i fixnum from 1 to ntimes do
-        (loop for num in nums do
-              (write-hex-v1 num stream))))
-
-(defun test-v2 (ntimes nums stream)
+(defun test-safe (ntimes nums stream)
   (declare (type fixnum ntimes))
   (loop for i fixnum from 1 to ntimes do
         (loop for num in nums do
               (write-hex num stream))))
+
+(defun test-unsafe (ntimes nums stream)
+  (declare (type fixnum ntimes))
+  (loop for i fixnum from 1 to ntimes do
+        (loop for num in nums do
+              (scary-unsafe-write-hex num stream))))
 
 (defun gc ()
   (tg::gc :full t :verbose nil))
@@ -79,26 +79,26 @@
           (with-open-file (stream "/dev/null"
                                   :direction :output
                                   :if-exists :append)
-            (let* ((v2-time  (progn (gc) (my-time (test-v2 ntimes nums stream))))
-                   (v1-time  (progn (gc) (my-time (test-v1 ntimes nums stream))))
+            (let* ((unsafe-time  (progn (gc) (my-time (test-unsafe ntimes nums stream))))
+                   (safe-time  (progn (gc) (my-time (test-safe ntimes nums stream))))
                    (fmt-time (progn (gc) (my-time (test-builtin ntimes nums stream)))))
-              (list n fmt-time v1-time v2-time))))))
+              (list n fmt-time safe-time unsafe-time))))))
 
 (progn
   (format t "~%")
-  (format t "         N         FMT         V1         V2      Speedup~%")
-  (format t "-----------------------------------------------------------~%")
+  (format t "         N         FMT       SAFE/Speedup     UNSAFE/Speedup~%")
+  (format t "---------------------------------------------------------------~%")
   (loop for elem in *times* do
-        (let* ((n   (first elem))
-               (fmt (second elem))
-               (v1  (third elem))
-               (v2  (fourth elem)))
-          (format t "~10D  ~10,2F ~10,2F ~10,2F   ~10,2F~%"
-                  n fmt v1 v2
-                  (if (< fmt v2)
-                      (- (/ v2 fmt))
-                    (/ fmt v2)))))
-  (format t "-----------------------------------------------------------~%")
+        (let* ((n        (first elem))
+               (fmt      (second elem))
+               (safe     (third elem))
+               (unsafe   (fourth elem))
+               (sspeedup (if (< fmt safe)   (- (/ safe fmt))   (/ fmt safe)))
+               (uspeedup (if (< fmt unsafe) (- (/ unsafe fmt)) (/ fmt unsafe))))
+          (format t "~10D  ~10,2Fs ~10,2Fs/~3,2Fx ~10,2Fs/~3,2Fx~%"
+                  n fmt safe sspeedup unsafe uspeedup)))
+  (format t "----------------------------------------------------------------~%")
   (format t "~%"))
+
 
 

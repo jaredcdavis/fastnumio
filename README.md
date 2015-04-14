@@ -1,17 +1,24 @@
 # fastnumio
 
-## Work in progress!! not yet ready for public consumption
+We provide faster Common Lisp routines for
 
-This library provides fast Common Lisp routines for
+ - Printing natural numbers (fixnums or bignums) to output streams in
+   hexadecimal format (e.g., `DEADBEEF`).
 
- - printing natural numbers (fixnums or bignums) to output streams
-   in hexadecimal format (e.g., `DEADBEEF`)
+ - Reading hexadecimal numbers in from input streams.
 
- - reading hexadecimal numbers in from input streams (to create
-   fixnums or bignums)
+Of course, Common Lisp provides its own built-in ways to print and read hex
+numbers, e.g., `(format stream "~x" val)` and `read` with inputs like `#xF00D`.
+However, for a particular application, we found that these built-in routines
+were too slow and that they produced a lot of garbage when bignums were
+involved.  We therefore developed faster replacements.
 
-These routines are optimized for 64-bit CCL on X86-64.  They may not be
-especially optimal on other Lisps.  Patches are (of course) welcome.
+Ballpark speedup:
+
+  - 3x or more on CCL (64-bit X86 Linux)
+  - 1.5x-2.5x faster on SBCL (64-bit X86 Linux)
+
+See [benchmark results](results.txt) for more details.
 
 
 ## API
@@ -21,16 +28,49 @@ especially optimal on other Lisps.  Patches are (of course) welcome.
   - `val` must be a non-negative integer.
   - `output-stream` must be an output stream.
 
-This is like `(format stream "~x" val)`.  It prints the hexadecimal encoding of
-`val` to `output-stream`.  Digits `A`-`F` are printed in upper-case.
+This is like `(format stream "~x" val)`.  We print a hexadecimal encoding of
+`val` to `output-stream`.  Some notes:
 
-On 64-bit CCL, `write-hex` is perhaps 4-7x faster than `(format stream "~x"
-val)` and, unlike `format`, allocate no memory.
-
-On 64-bit SBCL, `write-hex` is perhaps 2-4x faster than `format`.  It may use
-more memory than `format` on large bignums (e.g., beyond 2^128).
+  - The number is printed in conventional MSB-first order.
+  - Digits `A`-`F` are printed in upper-case.
+  - No prefixes are printed, i.e., we print `BEEF`, not `#BEEF`, `#xBEEF`, `0xBEEF`, etc.
 
 
+### `(scary-unsafe-write-hex val output-stream) --> stream`
+
+This is a drop-in replacement for `write-hex`.  On some Lisps it may be just an
+alias for `write-hex`.  On other Lisps, it may have a special implementation
+that achieves faster performance or uses less memory.
+
+This function is **scary and unsafe to use** because it makes use of internal,
+non-exported functionality from CCL or other Lisps.  It may therefore stop
+working if a Lisp upgrades causes these implementation details to change in
+unexpected ways.
+
+We do at least basic tests of this function to make sure it is working, so it
+is quite unlikely that a Lisp upgrade could screw up your program.  However,
+you should almost certainly NOT use this unless you need performance so badly
+that you are willing to take the risk.
+
+
+### `(read-hex input-stream) --> val`
+
+  - `val` is an integer on success or NIL on error/EOF
+
+We try to read an hex value (e.g., `FF9900`) from stream.  We succeed exactly
+when the stream begins with any hex digit.  On success, we consume all leading
+hex digits from the stream and return their value as an integer, leaving the
+stream at the first non-hex character.  On failure (no leading hex digits or
+EOF), we return NIL and leave the stream in place.  Some notes:
+
+ - We accept hex digits in any case, e.g., `37ff` or `37FF` or `37Ff` are all
+   fine.
+
+ - Leading zeroes are accepted and ignored.
+
+ - Prefixes are not expected or accepted.  If your stream begins with `#FF00`
+   or `#xFF00`, `read-hex` will fail.  If it begins with `0xFF00`, `read-hex`
+   will return 0 and the `xFF00` part will still be in the stream.
 
 
 ### Authorship, License
