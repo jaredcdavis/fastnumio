@@ -23,10 +23,10 @@ See [benchmark results](results.txt) for more details.
 
 ## API
 
-### `(write-hex val output-stream) --> stream`
+### `(write-hex val stream) --> stream`
 
   - `val` must be a non-negative integer.
-  - `output-stream` must be an output stream.
+  - `stream` must be an output stream.
 
 This is like `(format stream "~x" val)`.  We print a hexadecimal encoding of
 `val` to `output-stream`.  Some notes:
@@ -36,7 +36,7 @@ This is like `(format stream "~x" val)`.  We print a hexadecimal encoding of
   - No prefixes are printed, i.e., we print `BEEF`, not `#BEEF`, `#xBEEF`, `0xBEEF`, etc.
 
 
-### `(scary-unsafe-write-hex val output-stream) --> stream`
+### `(scary-unsafe-write-hex val stream) --> stream`
 
 This is a drop-in replacement for `write-hex`.  On some Lisps it may be just an
 alias for `write-hex`.  On other Lisps, it may have a special implementation
@@ -53,9 +53,10 @@ you should almost certainly NOT use this unless you need performance so badly
 that you are willing to take the risk.
 
 
-### `(read-hex input-stream) --> val`
+### `(read-hex stream) --> val`
 
-  - `val` is an integer on success or NIL on error/EOF
+  - `val` is an integer on success or NIL on error/EOF.
+  - `stream` must be an input stream.
 
 We try to read an hex value (e.g., `FF9900`) from stream.  We succeed exactly
 when the stream begins with any hex digit.  On success, we consume all leading
