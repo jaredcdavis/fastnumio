@@ -30,6 +30,7 @@
 
 (in-package "FASTNUMIO")
 
+(declaim (optimize (speed 3) (space 1) (safety 0)))
 
 ; ----------------------------------------------------------------------------
 ;
@@ -137,6 +138,7 @@
          (char)
          (nibble)
          (nibarrlen 128)
+         (some-nibble-p nil)
          (nibarr (make-array nibarrlen :element-type '(unsigned-byte 4))))
     (declare (dynamic-extent nibarr)
              (type fixnum pos)
@@ -148,6 +150,7 @@
           (setq nibble (and char (hex-digit-val char)))
           (unless nibble
             (loop-finish))
+          (setq some-nibble-p t)
           (unless (eql nibble 0)
             (loop-finish)))
 
@@ -177,8 +180,13 @@
     (when char (unread-char char stream))
 
     (when (eql pos 0)
-      ;; Failed to read any hex digits.  Nothing to do, just fail.
-      (return-from read-hex nil))
+      (return-from read-hex
+                   (if some-nibble-p
+                       ;; No real digits but at least some zero digits,
+                       ;; so the number is 0.
+                       0
+                     ;; Failed to read any hex digits.  Just fail.
+                     nil)))
 
     ;; Found hex digits and already decoded their nibbles into nibarr.  The
     ;; nibble in nibarr[0] is the most significant.  I now want to chunk them
@@ -221,7 +229,7 @@
                     (1- (expt 2 64))
                     (expt 2 80)
                     (1- (expt 2 80)))
-              (loop for i from 1 to 100 collect i)
+              (loop for i from 0 to 100 collect i)
               (loop for i from 1 to 100 collect (random (expt 2 64)))
               (loop for i from 1 to 100 collect (random (expt 2 1024))))))
   (loop for test in tests do

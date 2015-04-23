@@ -30,6 +30,7 @@
 
 (in-package "FASTNUMIO")
 
+(declaim (optimize (speed 3) (space 1) (safety 0)))
 
 ; ----------------------------------------------------------------------------
 ;
@@ -124,8 +125,11 @@
 (assert (not (fast-u60-p (+ 2 (expt 2 60)))))
 
 
+(declaim (optimize (speed 3) (space 1) (debug 0) (safety 0)))
+
 (declaim (inline hex-digit-to-char))
 (defun hex-digit-to-char (n)
+  (declare (type (integer 0 15) n))
   "Convert an integer in [0, 15] to a hex character.
    Adapted from acl2:books/std/strings/hex.lisp"
   (if (< n 10)
@@ -247,7 +251,7 @@
     ;; we want to print and POS says how many we need.  So write them.
     (write-string arr stream)))
 
-(defun write-hex (val stream)
+(defun write-hex-main (val stream)
   (declare (type unsigned-byte val))
   (if (fast-u60-p val)
       (write-hex-u60-without-leading-zeroes val stream)
@@ -258,11 +262,16 @@
                ;; Disappointingly we still get memory allocation here.
                (dynamic-extent high)
                (dynamic-extent low))
-      (write-hex high stream)
+      (write-hex-main high stream)
       (write-hex-u60-with-leading-zeroes low stream)))
   stream)
 
-
+(declaim (inline write-hex))
+(defun write-hex (val stream)
+  (declare (type unsigned-byte val))
+  (if (fast-u60-p val)
+      (write-hex-u60-without-leading-zeroes val stream)
+    (write-hex-main val stream)))
 
 
 
@@ -436,7 +445,7 @@
                     (1- (expt 2 64))
                     (expt 2 80)
                     (1- (expt 2 80)))
-              (loop for i from 1 to 100 collect i)
+              (loop for i from 0 to 100 collect i)
               (loop for i from 1 to 100 collect (random (expt 2 64)))
               (loop for i from 1 to 100 collect (random (expt 2 1024))))))
   (loop for test in tests do
