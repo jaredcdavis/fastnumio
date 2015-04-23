@@ -16,7 +16,7 @@ involved.  We therefore developed faster replacements.
 Ballpark speedup:
 
   - 3x or more on CCL (64-bit X86 Linux)
-  - 1.5x-2.5x faster on SBCL (64-bit X86 Linux)
+  - 2x or more on SBCL (64-bit X86 Linux)
 
 See [benchmark results](results.txt) for more details.
 
