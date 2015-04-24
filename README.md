@@ -18,6 +18,8 @@ Ballpark speedup:
   - 3x or more on CCL (64-bit X86 Linux)
   - 2x or more on SBCL (64-bit X86 Linux)
 
+Plus significant memory savings in many cases.
+
 See [benchmark results](results.txt) for more details.
 
 

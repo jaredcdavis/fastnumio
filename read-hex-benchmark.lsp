@@ -32,6 +32,14 @@
 (ql:quickload :trivial-garbage)
 (in-package "FASTNUMIO")
 
+(defun get-bytes ()
+  #+ccl
+  (ccl::total-bytes-allocated)
+  #+sbcl
+  (sb-ext::get-bytes-consed)
+  #+(and (not sbcl) (not ccl))
+  0)
+
 (format t "Writing test files for reading.~%")
 
 ; We write out different files (but with the same data) because Lisp's READ
@@ -122,11 +130,27 @@
   (tg::gc :full t :verbose nil))
 
 (defmacro my-time (form)
-  `(let ((start (get-internal-real-time))
-         (blah  (time ,form))
-         (end   (get-internal-real-time)))
+  ;; Returns (cons seconds bytes)
+  `(let ((start-bytes (get-bytes))
+         (start-time  (get-internal-real-time))
+         (blah        (time ,form))
+         (end-time    (get-internal-real-time))
+         (end-bytes   (get-bytes)))
      (declare (ignore blah))
-     (/ (coerce (- end start) 'float) internal-time-units-per-second)))
+     (cons (/ (coerce (- end-time start-time) 'float)
+              internal-time-units-per-second)
+           (- end-bytes start-bytes))))
+
+(defun nice-bytes (x)
+  (cond ((< x (expt 2 10))
+         (format nil "~5DB" x))
+        ((< x (expt 2 20))
+         (format nil "~5,1FK" (/ (coerce x 'float) (expt 2 10))))
+        ((< x (expt 2 30))
+         (format nil "~5,1FM" (/ (coerce x 'float) (expt 2 20))))
+        (t
+         (format nil "~5,1FG" (/ (coerce x 'float) (expt 2 30))))))
+
 
 (defparameter *times*
   (loop for test in '((32  "/dev/shm/sharp-u32s.txt"  "/dev/shm/u32s.txt")
@@ -145,21 +169,37 @@
                  (unsafe-time    (progn (gc) (my-time (test-unsafe ntimes plain-file)))))
             (list n builtin-time safe-time unsafe-time)))))
 
-
 (progn
   (format t "~%")
   (format t "         N        READ       SAFE/Speedup     UNSAFE/Speedup~%")
-  (format t "--------------------------------------------------------------~%")
+  (format t "--------------------------------------------------------------~%~%")
   (loop for elem in *times* do
+        ;; Times
         (let* ((n        (first elem))
-               (builtin  (second elem))
-               (safe     (third elem))
-               (unsafe   (fourth elem))
+               (builtin  (car (second elem)))
+               (safe     (car (third elem)))
+               (unsafe   (car (fourth elem)))
                (sspeedup (if (< builtin safe)   (- (/ safe builtin))   (/ builtin safe)))
                (uspeedup (if (< builtin unsafe) (- (/ unsafe builtin)) (/ builtin unsafe))))
           (format t "~10D  ~10,2Fs ~10,2Fs/~3,2Fx ~10,2Fs/~3,2Fx~%"
                   n builtin safe sspeedup unsafe uspeedup
-                  )))
+                  ))
+        ;; Bytes
+        (let* ((builtin  (cdr (second elem)))
+               (safe     (cdr (third elem)))
+               (unsafe   (cdr (fourth elem)))
+               (sspeedup (if (eql builtin 0)
+                             "???"
+                           (* 100 (/ (coerce safe 'float) builtin))))
+               (uspeedup (if (eql builtin 0)
+                             "???"
+                           (* 100 (/ (coerce unsafe 'float) builtin)))))
+          (format t "~10a       ~7a    ~7a ~3,1F%      ~7a ~3,1F%~%"
+                  ""
+                  (nice-bytes builtin)
+                  (nice-bytes safe) sspeedup
+                  (nice-bytes unsafe) uspeedup))
+        (format t "~%"))
   (format t "--------------------------------------------------------------~%")
   (format t "~%"))
 
