@@ -54,12 +54,20 @@
 
 (with-open-file (plain "/dev/shm/u128s.txt" :direction :output :if-exists :supersede)
   (with-open-file (sharp "/dev/shm/sharp-u128s.txt" :direction :output :if-exists :supersede)
-    (loop for i fixnum from 1 to 1000000 do
+    (loop for i fixnum from 1 to 500000 do
           (let ((num (random (expt 2 128))))
             (format plain "~x~%" num)
             (format sharp "#x~x~%" num)))))
 
+(with-open-file (plain "/dev/shm/u512s.txt" :direction :output :if-exists :supersede)
+  (with-open-file (sharp "/dev/shm/sharp-u512s.txt" :direction :output :if-exists :supersede)
+    (loop for i fixnum from 1 to 200000 do
+          (let ((num (random (expt 2 512))))
+            (format plain "~x~%" num)
+            (format sharp "#x~x~%" num)))))
+
 (defun test-builtin (ntimes sharp-filename)
+  (format t "Testing READ.~%")
   (loop for i fixnum from 1 to ntimes
         do
         (with-open-file (stream sharp-filename :direction :input)
@@ -83,6 +91,7 @@
            stream))))
 
 (defun test-safe (ntimes plain-filename)
+  (format t "Testing READ-HEX.~%")
   (loop for i fixnum from 1 to ntimes
         do
         (with-open-file (stream plain-filename :direction :input)
@@ -90,6 +99,20 @@
             (loop do
                   (eat-whitespace stream)
                   (let ((tmp (read-hex stream)))
+                    (if tmp
+                        (setq elem tmp)
+                      (loop-finish))))
+            elem))))
+
+(defun test-unsafe (ntimes plain-filename)
+  (format t "Testing SCARY-UNSAFE-READ-HEX.~%")
+  (loop for i fixnum from 1 to ntimes
+        do
+        (with-open-file (stream plain-filename :direction :input)
+          (let ((elem nil))
+            (loop do
+                  (eat-whitespace stream)
+                  (let ((tmp (scary-unsafe-read-hex stream)))
                     (if tmp
                         (setq elem tmp)
                       (loop-finish))))
@@ -108,7 +131,9 @@
 (defparameter *times*
   (loop for test in '((32  "/dev/shm/sharp-u32s.txt"  "/dev/shm/u32s.txt")
                       (64  "/dev/shm/sharp-u64s.txt"  "/dev/shm/u64s.txt")
-                      (128 "/dev/shm/sharp-u128s.txt" "/dev/shm/u128s.txt"))
+                      (128 "/dev/shm/sharp-u128s.txt" "/dev/shm/u128s.txt")
+                      (512 "/dev/shm/sharp-u512s.txt" "/dev/shm/u512s.txt")
+                      )
         collect
         (let ((n          (first test))
               (sharp-file (second test))
@@ -116,26 +141,26 @@
               (ntimes     5))
           (format t "~% --- Testing reads of random numbers under 2^~d ---~%" n)
           (let* ((builtin-time   (progn (gc) (my-time (test-builtin ntimes sharp-file))))
-                 (safe-time      (progn (gc) (my-time (test-safe ntimes plain-file)))))
-            (list n builtin-time safe-time)))))
+                 (safe-time      (progn (gc) (my-time (test-safe ntimes plain-file))))
+                 (unsafe-time    (progn (gc) (my-time (test-unsafe ntimes plain-file)))))
+            (list n builtin-time safe-time unsafe-time)))))
 
 
 (progn
   (format t "~%")
-  (format t "         N        READ       SAFE/Speedup~%")
-  (format t "------------------------------------------------~%")
+  (format t "         N        READ       SAFE/Speedup     UNSAFE/Speedup~%")
+  (format t "--------------------------------------------------------------~%")
   (loop for elem in *times* do
         (let* ((n        (first elem))
-               (fmt      (second elem))
+               (builtin  (second elem))
                (safe     (third elem))
-               ;;(unsafe   (fourth elem))
-               (sspeedup (if (< fmt safe)   (- (/ safe fmt))   (/ fmt safe))))
-               ;;(uspeedup (if (< fmt unsafe) (- (/ unsafe fmt)) (/ fmt unsafe))))
-          (format t "~10D  ~10,2Fs ~10,2Fs/~3,2Fx~%"
-                  n fmt safe sspeedup
-                  ;;unsafe uspeedup
+               (unsafe   (fourth elem))
+               (sspeedup (if (< builtin safe)   (- (/ safe builtin))   (/ builtin safe)))
+               (uspeedup (if (< builtin unsafe) (- (/ unsafe builtin)) (/ builtin unsafe))))
+          (format t "~10D  ~10,2Fs ~10,2Fs/~3,2Fx ~10,2Fs/~3,2Fx~%"
+                  n builtin safe sspeedup unsafe uspeedup
                   )))
-  (format t "------------------------------------------------~%")
+  (format t "--------------------------------------------------------------~%")
   (format t "~%"))
 
 (progn
@@ -143,9 +168,12 @@
   (delete-file "/dev/shm/sharp-u32s.txt")
   (delete-file "/dev/shm/sharp-u64s.txt")
   (delete-file "/dev/shm/sharp-u128s.txt")
+  (delete-file "/dev/shm/sharp-u512s.txt")
   (delete-file "/dev/shm/u32s.txt")
   (delete-file "/dev/shm/u64s.txt")
-  (delete-file "/dev/shm/u128s.txt"))
+  (delete-file "/dev/shm/u128s.txt")
+  (delete-file "/dev/shm/u512s.txt")
+  )
 
 
 

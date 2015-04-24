@@ -558,6 +558,12 @@
                     (expt 2 80)
                     (1- (expt 2 80)))
               (loop for i from 0 to 100 collect i)
+              (loop for i from 0 to 200 collect (ash 1 i))
+              (loop for i from 0 to 200 collect (1- (ash 1 i)))
+              (loop for n from 1 to 200 append  ;; borders near powers of 2
+                    (loop for i from (max 0 (- (expt 2 n) 10))
+                          to        (+ (expt 2 n) 10)
+                          collect i))
               (loop for i from 1 to 100 collect (random (expt 2 64)))
               (loop for i from 1 to 100 collect (random (expt 2 1024))))))
   (loop for test in tests do
