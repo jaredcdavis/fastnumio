@@ -44,19 +44,16 @@
 
 (declaim (inline hex-digit-val))
 (defun hex-digit-val (x)
-  (declare (type character x))
-  (let ((code (char-code x)))
-    (declare (type fixnum code))
-    (cond ((<= code #.(char-code #\9))
-           (and (<= #.(char-code #\0) code)
-                (the fixnum (- code #.(char-code #\0)))))
-          ((<= code #.(char-code #\F))
-           (and (<= #.(char-code #\A) code)
-                (the fixnum (- code #.(- (char-code #\A) 10)))))
-          (t
-           (and (<= code #.(char-code #\f))
-                (<= #.(char-code #\a) code)
-                (the fixnum (- code #.(- (char-code #\a) 10))))))))
+  (declare (type character x)
+           (optimize (safety 0) speed))
+  (svref #.(let ((map (make-array 256)))
+             (loop for i from 0 below 256 do (setf (aref map i) nil))
+             (loop for i to 15
+                   for char = (digit-char i 16)
+                   do (setf (aref map (char-code char)) i
+                            (aref map (char-code (char-downcase char))) i))
+             map)
+         (char-code x)))
 
 
 
